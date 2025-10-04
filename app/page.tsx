@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { QRCodeCanvas } from "qrcode.react";
 
 const DEFAULT_VALUE = "https://abhijayrajvansh.com";
@@ -29,14 +30,18 @@ const useIsMobile = () => {
   return isMobile;
 };
 
-export default function Home() {
+const Home = () => {
   const isMobile = useIsMobile();
-  const [input, setInput] = useState(DEFAULT_VALUE);
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const searchParamsString = searchParams.toString();
+  const [input, setInput] = useState(() => searchParams.get("content") ?? DEFAULT_VALUE);
   
   // Set different default sizes based on device type
-  const getDefaultSize = () => isMobile ? 200 : 300;
-  const getMinSize = () => isMobile ? 120 : 160;
-  const getMaxSize = () => isMobile ? 320 : 400;
+  const getDefaultSize = useCallback(() => (isMobile ? 200 : 300), [isMobile]);
+  const getMinSize = useCallback(() => (isMobile ? 120 : 160), [isMobile]);
+  const getMaxSize = useCallback(() => (isMobile ? 320 : 400), [isMobile]);
   
   const [size, setSize] = useState(getDefaultSize());
   const [feedback, setFeedback] = useState<{
@@ -48,6 +53,28 @@ export default function Home() {
 
   const qrValue = input.trim() || DEFAULT_VALUE;
 
+  // Keep query param synced with user input so links remain shareable
+  useEffect(() => {
+    const trimmedValue = input.trim();
+    const params = new URLSearchParams(searchParamsString);
+    const currentValue = params.get("content") ?? "";
+
+    if (trimmedValue.length === 0) {
+      if (!currentValue) {
+        return;
+      }
+      params.delete("content");
+    } else {
+      if (trimmedValue === currentValue) {
+        return;
+      }
+      params.set("content", trimmedValue);
+    }
+
+    const queryString = params.toString();
+    router.replace(`${pathname}${queryString ? `?${queryString}` : ""}`, { scroll: false });
+  }, [input, pathname, router, searchParamsString]);
+
   // Update size when device type changes
   useEffect(() => {
     const newDefaultSize = getDefaultSize();
@@ -58,7 +85,7 @@ export default function Home() {
     if (size < minSize || size > maxSize || size === (isMobile ? 280 : 200)) {
       setSize(newDefaultSize);
     }
-  }, [isMobile]);
+  }, [getDefaultSize, getMaxSize, getMinSize, isMobile, size]);
 
   useEffect(() => {
     return () => {
@@ -203,5 +230,19 @@ export default function Home() {
         </footer>
       </div>
     </main>
+  );
+};
+
+const PageFallback = () => (
+  <main className="flex min-h-screen items-center justify-center px-4 py-5 text-slate-500">
+    Loading…
+  </main>
+);
+
+export default function HomePage() {
+  return (
+    <Suspense fallback={<PageFallback />}>
+      <Home />
+    </Suspense>
   );
 }
